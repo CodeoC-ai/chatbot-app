@@ -34,22 +34,23 @@ def reset_chat(params):
 
 # function to send parameters to the CodeoC API and get the first message of the chatbot
 async def initialize_chat(params):
-    # dummy response
-    sleep(5) # simulate delay
-    st.session_state["messages"].append({"role": "assistant", "content": "I am here to help you with your car issue."})
+    # # dummy response
+    # sleep(7) # simulate delay
+    # st.session_state["messages"].append({"role": "assistant", "content": "I am here to help you with your car issue."})
 
-    # # call the CodeoC API
-    # response = requests.post(st.secrets["codeoc"]["API_ENDPOINT"], json=params)
-    # if response.statusCode == 200:
-    #     body = json.loads(response.body)
-    #     # final instructions from the API
-    #     final_instructions = body.final_instructions
-    #     # store the PDF and forum instructions in the session state
-    #     st.session_state["pdf_instructions"] = body["pdf_instructions"]
-    #     st.session_state["forum_instructions"] = body["forum_instructions"]
-    #     st.session_state["messages"].append({"role": "assistant", "content": final_instructions})
-    # else:
-    #     st.session_state["messages"].append({"role": "assistant", "content": f"Error: {response['statusCode']} {response['body']}"})
+    # call the CodeoC API
+    response = requests.post(st.secrets["codeoc"]["API_ENDPOINT"], json=params)
+    if response.status_code == 200:
+        print(response.text)
+        body = json.loads(response.text)
+        # final instructions from the API
+        final_instructions = body["final_instructions"]
+        # store the PDF and forum instructions in the session state
+        st.session_state["pdf_instructions"] = body["pdf_instructions"]
+        st.session_state["forum_instructions"] = body["forum_instructions"]
+        st.session_state["messages"].append({"role": "assistant", "content": final_instructions})
+    else:
+        st.session_state["messages"].append({"role": "assistant", "content": f"Error: {response.status_code} - {response.text}"})
 
     placeholder = st.empty()
     placeholder.markdown(st.session_state["messages"][-1]["content"])
@@ -59,30 +60,33 @@ async def initialize_chat(params):
         st.write(st.session_state["forum_instructions"])
 
 async def get_fast_instructions(params):
-    # dummy response
-    sleep(1) # simulate delay
-    response = {"statusCode": 200, "body": {
-        "rendered_responses": [
-            {
-                "DTC": "P0300",
-                "llm_rendered_response": "Check the spark plugs and ignition coils."
-            },
-            {
-                "DTC": "P0420",
-                "llm_rendered_response": "Check the catalytic converter."
-            }
-        ]
-    }}
+    # # # dummy response
+    # sleep(1) # simulate delay
+    # response = {
+    #     "rendered_responses": [
+    #         {
+    #             "DTC": "P0030",
+    #             "llm_rendered_response": "Fast instructions for P0030"
+    #         },
+    #         {
+    #             "DTC": "P0134",
+    #             "llm_rendered_response": "Fast instructions for P0134"
+    #         }
+    #     ]
+    # }
+    # st.session_state["fast_instructions"] = response["rendered_responses"]
+    # for dtc in st.session_state["fast_instructions"]:
+    #     with st.expander(f"Fast instructions for {dtc['DTC']}"):
+    #         st.write(dtc['llm_rendered_response'])
 
-    # # call the CodeoC API
-    # params["super_fast_instructions"] = True
-    # response = requests.post(st.secrets["codeoc"]["API_ENDPOINT"], json=params)
-
-    if response["statusCode"] == 200:
-        st.session_state["fast_instructions"] = response["body"]['rendered_responses']
-        for dtc in response["body"]['rendered_responses']:
+    # call the CodeoC API
+    params["super_fast_instructions"] = True
+    response = requests.post(st.secrets["codeoc"]["API_ENDPOINT"], json=params)
+    if response.status_code == 200:
+        st.session_state["fast_instructions"] = json.loads(response.text)["rendered_responses"]
+        for dtc in st.session_state["fast_instructions"]:
             with st.expander(f"Fast instructions for {dtc['DTC']}"):
-                st.write(dtc['llm_rendered_response'])
+                st.write(dtc["llm_rendered_response"])
     else:
         st.error("Error getting fast instructions.")
 
@@ -195,8 +199,8 @@ async def main():
                 print("Initializing chat...")
                 with st.chat_message("assistant"):
                     with st.spinner("Processing. Please wait..."):
-                        task1 = asyncio.create_task(get_fast_instructions(st.session_state["params"]))
-                        task2 = asyncio.create_task(initialize_chat(st.session_state["params"]))
+                        task1 = asyncio.create_task(get_fast_instructions(st.session_state["params"].copy()))
+                        task2 = asyncio.create_task(initialize_chat(st.session_state["params"].copy()))
                         await asyncio.gather(task1, task2)
             else:
                 print("Chatting...")
