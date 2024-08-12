@@ -17,9 +17,9 @@ if "messages" not in st.session_state:
 if "form_submitted" not in st.session_state:
     st.session_state["form_submitted"] = False
 if "pdf_instructions" not in st.session_state:
-    st.session_state["pdf_instructions"] = "You can find the PDF instructions here."
+    st.session_state["pdf_instructions"] = ""
 if "forum_instructions" not in st.session_state:
-    st.session_state["forum_instructions"] = "You can find the forum instructions here."
+    st.session_state["forum_instructions"] = ""
 if "authenticated" not in st.session_state:
     st.session_state["authenticated"] = False
 if "params" not in st.session_state:
@@ -31,6 +31,9 @@ if "fast_instructions" not in st.session_state:
 def reset_chat(params):
     st.session_state.messages = [{"role": "system", "content": "You are a helpful diagnostic assistant for mechanics, solving car issues."}]
     st.session_state["messages"].append({"role": "user", "content": f"Hi, I have a car issue.\n\n{params}"})
+    st.session_state["fast_instructions"] = None
+    st.session_state["pdf_instructions"] = ""
+    st.session_state["forum_instructions"] = ""
 
 # function to send parameters to the CodeoC API and get the first message of the chatbot
 async def initialize_chat(params):
@@ -41,7 +44,6 @@ async def initialize_chat(params):
     # call the CodeoC API
     response = requests.post(st.secrets["codeoc"]["API_ENDPOINT"], json=params)
     if response.status_code == 200:
-        print(response.text)
         body = json.loads(response.text)
         # final instructions from the API
         final_instructions = body["final_instructions"]
@@ -54,13 +56,15 @@ async def initialize_chat(params):
 
     placeholder = st.empty()
     placeholder.markdown(st.session_state["messages"][-1]["content"])
-    with st.expander("A - PDF instructions"):
-        st.write(st.session_state["pdf_instructions"])
-    with st.expander("B - Forum instructions"):
-        st.write(st.session_state["forum_instructions"])
+    if st.session_state["pdf_instructions"] != "":
+        with st.expander("A - PDF instructions"):
+            st.write(st.session_state["pdf_instructions"])
+    if st.session_state["forum_instructions"] != "":
+        with st.expander("B - Forum instructions"):
+            st.write(st.session_state["forum_instructions"])
 
 async def get_fast_instructions(params):
-    # # # dummy response
+    # # dummy response
     # sleep(1) # simulate delay
     # response = {
     #     "rendered_responses": [
@@ -165,27 +169,32 @@ async def main():
         st.title("CodeoC Car Diagnostic Expert")
 
         # display chat messages skipping the first system message
+        print("Loading chat messages...")
         for i, message in enumerate(st.session_state.messages[1:], 1):
             if i == 2:
                 with st.chat_message(message["role"]):
                     # display fast instructions
-                    for fast_inst in st.session_state["fast_instructions"]:
-                        with st.expander(f"Fast instructions for {fast_inst['DTC']}"):
-                            st.write(fast_inst['llm_rendered_response'])
+                    if st.session_state["fast_instructions"]:
+                        for fast_inst in st.session_state["fast_instructions"]:
+                            with st.expander(f"Fast instructions for {fast_inst['DTC']}"):
+                                st.write(fast_inst['llm_rendered_response'])
 
                     st.markdown(message["content"])
 
                     # display the PDF and forum instructions
-                    with st.expander("A - PDF instructions"):
-                        st.write(st.session_state["pdf_instructions"])
-                    with st.expander("B - Forum instructions"):
-                        st.write(st.session_state["forum_instructions"])
+                    if st.session_state["pdf_instructions"] != "":
+                        with st.expander("A - PDF instructions"):
+                            st.write(st.session_state["pdf_instructions"])
+                    if st.session_state["forum_instructions"] != "":
+                        with st.expander("B - Forum instructions"):
+                            st.write(st.session_state["forum_instructions"])
             else:
                 with st.chat_message(message["role"]):
                     st.markdown(message["content"])
         
         # user-provided prompt
         if prompt := st.chat_input(disabled=False):
+            print("User prompt received.")
             if st.session_state.messages[-1]["role"] != "user":
                 with st.chat_message("user"):
                     st.markdown(prompt)
@@ -193,6 +202,7 @@ async def main():
 
         # assistant response
         if st.session_state.messages[-1]["role"] != "assistant":
+            print("Assistant response.")
             #print(st.session_state["messages"])
             # if chat has 2 messages, call the CodeoC API to get fast instructions and initialize the chat
             if len(st.session_state["messages"]) == 2:
@@ -202,6 +212,7 @@ async def main():
                         task1 = asyncio.create_task(get_fast_instructions(st.session_state["params"].copy()))
                         task2 = asyncio.create_task(initialize_chat(st.session_state["params"].copy()))
                         await asyncio.gather(task1, task2)
+                        st.rerun()
             else:
                 print("Chatting...")
                 with st.chat_message("assistant"):
@@ -212,19 +223,32 @@ async def main():
                     # full_response = "I am here to help you with your car issue."
                     # placeholder.markdown(full_response)
 
-                    messages = st.session_state["messages"]
-                    # call the OpenAI API
-                    response = client.chat.completions.create(
-                        model="gpt-4o-mini",
-                        messages=messages,
-                        temperature=0.7,
-                        stream=True
-                    )
+                    try:
+                        messages = st.session_state["messages"]
 
-                    for chunk in response:
-                        if chunk.choices[0].delta.content:
-                            full_response += chunk.choices[0].delta.content
-                            placeholder.markdown(full_response)
+                        # call the OpenAI API - stream the response
+                        response = client.chat.completions.create(
+                            model="gpt-4o-mini",
+                            messages=messages,
+                            temperature=0.7,
+                            stream=True
+                        )
+                        for chunk in response:
+                            if chunk.choices[0].delta.content:
+                                full_response += chunk.choices[0].delta.content
+                                placeholder.markdown(full_response)
+
+                        # # call the OpenAI API - get the full response
+                        # response = client.chat.completions.create(
+                        #     model="gpt-4o-mini",
+                        #     messages=messages,
+                        #     temperature=0.7
+                        # )
+                        # full_response = response.choices[0].message.content.strip()
+                        # placeholder.markdown(full_response)
+                    except Exception as e:
+                        st.error(f"An error occurred: {e}. Please refresh the page and try again.")
+                        st.stop()
 
                 st.session_state["messages"].append({"role": "assistant", "content": full_response})
     else:
