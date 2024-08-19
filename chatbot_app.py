@@ -8,6 +8,20 @@ import requests
 import json
 import re
 
+# language dictionary
+language_dict = {
+    "en": {
+        "A_prompt": "You are a diagnostic assistant designed to help mechanics solve issues with cars. Given Diagnostic Trouble Codes (DTCs), generic information about the car (like manufacturer, year, model, engine ID, etc.), and the resolutions of single error codes from manuals, you can understand problems by combining knowledge from different errors. You will derive procedures and instructions to propose to mechanics to fix them. You should emphasize the information sent by mechanics about error codes to generate answers that stick to what is provided. You combine this info to truly understand the problem while avoiding generating incorrect or hallucinated answers. You communicate in a technical but clear and accessible manner, suitable for both experienced and new mechanics. Provide step-by-step instructions to ensure thorough and safe troubleshooting and repair.",
+        "B_prompt": "Write the problems raised in the threads and the solutions to the problems raised in the threads. Do not name people or users. Explain these solutions and problems only as if you arrived at them through your expertise your knowledge bank. Write as concisely as possible and technically in detail. There are several solutions in the threads so that these are described but with an emphasis on the solution that occurs most often in the threads. Write your answer to the person in the following structure: Problem:; Solution:",
+        "C_prompt": "You are a car diagnostic assistant for mechanics. When provided with information about error codes (DTCs), vehicle details (like manufacturer, year, model, engine ID, etc.), and error resolutions from car manufacturer manuals and car repair community (forums), you will intelligently combine this information to offer concise, effective solutions for troubleshooting and fixing issues. The goal is to help mechanics quickly and accurately diagnose and resolve car problems based on the provided data. Emphasize information from forums especially if a combination of DTCs is present, as forums are excellent at identifying the real issue when multiple errors occur. However, also consider the information from manuals as the ground truth. Responses should be short and effective, avoiding hallucinations by grounding solutions in the provided information. Follow information from manuals and forums, understand the issue, and provide clear and concise resolutions to the mechanics. Communicate in a technical but clear and accessible manner, suitable for both experienced and new mechanics."
+    },
+    "se": {
+        "A_prompt": "Du är en diagnostisk assistent som är utformad för att hjälpa mekaniker att lösa problem med bilar. Med hjälp av diagnosfelkoder (DTC), generell information om bilen (som tillverkare, år, modell, motornummer, etc.) och lösningar på enskilda felkoder från manualer kan du förstå problem genom att kombinera kunskap från olika fel. Du kommer att utarbeta procedurer och instruktioner att föreslå för mekaniker för att fixa dem. Du bör betona den information som skickas av mekaniker om felkoder för att generera svar som håller sig till det som tillhandahålls. Du kombinerar denna information för att verkligen förstå problemet samtidigt som du undviker att generera felaktiga eller hallucinerade svar. Du kommunicerar på ett tekniskt men tydligt och tillgängligt sätt, lämpligt för både erfarna och nya mekaniker. Ge steg-för-steg-instruktioner för att säkerställa grundlig och säker felsökning och reparation.",
+        "B_prompt": "Skriv problemen som tas upp i trådarna och lösningarna på problemen som tas upp i trådarna. Nämn inte personer eller användare. Förklara dessa lösningar och problem enbart som om du kommit fram till dom via din expertis din kunskapsbank. Skriv så kortfattat som möjligt samt tekniskt detaljerat. Det finns flera olika lösningar i trådarna så att dessa beskrivas men med betoning på lösningen som förekommer oftast i trådarna. Skriv ditt svar till personen i löpande form enligt följande struktur: Problem:; Lösning:",
+        "C_prompt": "Du är en diagnostikassistent för bilmekaniker. När du får information om felkoder (DTC), fordonsdetaljer (som tillverkare, årsmodell, modell, motor-ID etc.) och fellösningar från biltillverkarens manualer och bilreparationscommunityn (forum), kombinerar du denna information på ett intelligent sätt för att erbjuda kortfattade och effektiva lösningar för felsökning och problemlösning. Målet är att hjälpa mekaniker att snabbt och korrekt diagnostisera och lösa bilproblem baserat på de tillhandahållna uppgifterna. Betona information från forum, särskilt om en kombination av DTC:er förekommer, eftersom forum är utmärkta på att identifiera det verkliga problemet när flera fel uppstår. Betrakta dock även informationen från manualer som den sanna grunden. Svaren ska vara korta och effektiva och undvika hallucinationer genom att grunda lösningarna i den information som tillhandahålls. Följ information från manualer och forum, förstå problemet och ge mekanikerna tydliga och koncisa lösningar. Kommunicera på ett tekniskt men tydligt och lättillgängligt sätt som passar både erfarna och nya mekaniker."
+    },
+}
+
 # set the OpenAI API key
 client = OpenAI(organization='org-pWvJLxaWnYi652BL7AGbQjXl', project=st.secrets["openai"]["PROJECT_ID"], api_key=st.secrets["openai"]["OPENAI_API_KEY"])
 
@@ -26,11 +40,18 @@ if "params" not in st.session_state:
     st.session_state["params"] = None
 if "fast_instructions" not in st.session_state:
     st.session_state["fast_instructions"] = None
+if "selected_language" not in st.session_state:
+    st.session_state["selected_language"] = "en"
+
+# language toggle
+selected_language = st.sidebar.radio("Select language for prompts:", ("en", "se"), format_func=lambda x: x.upper())
+st.session_state["selected_language"] = selected_language
 
 # function to reset chat and form
 def reset_chat(params):
     st.session_state.messages = [{"role": "system", "content": "You are a helpful diagnostic assistant for mechanics, solving car issues."}]
-    st.session_state["messages"].append({"role": "user", "content": f"Hi, I have a car issue.\n\n{params}"})
+    filtered_params = {k: v for k, v in params.items() if k != "meta_params"}
+    st.session_state["messages"].append({"role": "user", "content": f"Hi, I have a car issue.\n\n{filtered_params}"})
     st.session_state["fast_instructions"] = None
     st.session_state["pdf_instructions"] = ""
     st.session_state["forum_instructions"] = ""
@@ -52,7 +73,8 @@ async def initialize_chat(params):
         st.session_state["forum_instructions"] = body["forum_instructions"]
         st.session_state["messages"].append({"role": "assistant", "content": final_instructions})
     else:
-        st.session_state["messages"].append({"role": "assistant", "content": f"Error: {response.status_code} - {response.text}"})
+        message = json.loads(response.text)
+        st.session_state["messages"].append({"role": "assistant", "content": f"{message['error']}\n\nError code: {response.status_code}\n\nError on A - PDF instructions: {message['A']}\n\nError on B - Forum instructions: {message['B']}"})
 
     placeholder = st.empty()
     placeholder.markdown(st.session_state["messages"][-1]["content"])
@@ -84,7 +106,7 @@ async def get_fast_instructions(params):
     #         st.write(dtc['llm_rendered_response'])
 
     # call the CodeoC API
-    params["super_fast_instructions"] = True
+    params["meta_params"]["super_fast_instructions"] = True
     response = requests.post(st.secrets["codeoc"]["API_ENDPOINT"], json=params)
     if response.status_code == 200:
         st.session_state["fast_instructions"] = json.loads(response.text)["rendered_responses"]
@@ -92,7 +114,7 @@ async def get_fast_instructions(params):
             with st.expander(f"Fast instructions for {dtc['DTC']}"):
                 st.write(dtc["llm_rendered_response"])
     else:
-        st.error("Error getting fast instructions.")
+        st.error(f"Error getting fast instructions: {response.text}")
 
 # function to check password
 def check_password():
@@ -120,13 +142,23 @@ async def main():
     with st.sidebar.form(key='input_form'):
         # set parameters
         dtcs = st.text_input("dtcs", value="P0030, P0134")
-        vags = st.text_input("vags")
+        vags = st.text_input("internal error codes (vags)")
         vin = st.text_input("vin")
         manufacturer = st.text_input("manufacturer", value="volkswagen")
-        model = st.text_input("model", value="golf")
+        model = st.text_input("model", value="golf gti")
         engine_id = st.text_input("engine id", value="BEV")
         mileage = st.text_input("mileage")
         year = st.text_input("year")
+
+        st.markdown("---")
+
+        # prompt text fields and temperature slider
+        A_prompt = st.text_area("Prompt A - PDF instructions", value=language_dict[st.session_state["selected_language"]]["A_prompt"])
+        A_temperature = st.slider("Prompt A - Temperature", min_value=0.0, max_value=2.0, value=0.7, step=0.1)
+        B_prompt = st.text_area("Prompt B - Forum instructions", value=language_dict[st.session_state["selected_language"]]["B_prompt"])
+        B_temperature = st.slider("Prompt B - Temperature", min_value=0.0, max_value=2.0, value=0.7, step=0.1)
+        C_prompt = st.text_area("Prompt C - Final instructions", value=language_dict[st.session_state["selected_language"]]["C_prompt"])
+        C_temperature = st.slider("Prompt C - Temperature", min_value=0.0, max_value=2.0, value=0.7, step=0.1)
 
         submit_button = st.form_submit_button(label='Submit')
     
@@ -157,9 +189,18 @@ async def main():
                     "model": model if model else None,
                     "engine_id": engine_id if engine_id else None,
                     "mileage": mileage if mileage else None,
-                    "year": year if year else None
+                    "year": year if year else None,
+                    "meta_params": {
+                        "language": st.session_state["selected_language"],
+                        "A_prompt": A_prompt,
+                        "A_temperature": A_temperature,
+                        "B_prompt": B_prompt,
+                        "B_temperature": B_temperature,
+                        "C_prompt": C_prompt,
+                        "C_temperature": C_temperature
+                    }
                 }
-                reset_chat(st.session_state["params"])
+                reset_chat(st.session_state["params"].copy())
                 st.rerun()
             else:
                 st.error("Enter at least one DTC code in the correct format (e.g., P1234).")
