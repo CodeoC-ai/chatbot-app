@@ -3,6 +3,7 @@ from openai import OpenAI
 import os
 from time import sleep
 import asyncio
+import copy
 
 import requests
 import json
@@ -200,7 +201,7 @@ async def main():
                         "C_temperature": C_temperature
                     }
                 }
-                reset_chat(st.session_state["params"].copy())
+                reset_chat(copy.deepcopy(st.session_state["params"]))
                 st.rerun()
             else:
                 st.error("Enter at least one DTC code in the correct format (e.g., P1234).")
@@ -250,8 +251,8 @@ async def main():
                 print("Initializing chat...")
                 with st.chat_message("assistant"):
                     with st.spinner("Processing. Please wait..."):
-                        task1 = asyncio.create_task(get_fast_instructions(st.session_state["params"].copy()))
-                        task2 = asyncio.create_task(initialize_chat(st.session_state["params"].copy()))
+                        task1 = asyncio.create_task(get_fast_instructions(copy.deepcopy(st.session_state["params"])))
+                        task2 = asyncio.create_task(initialize_chat(copy.deepcopy(st.session_state["params"])))
                         await asyncio.gather(task1, task2)
                         st.rerun()
             else:
