@@ -143,7 +143,7 @@ async def main():
     with st.sidebar.form(key='input_form'):
         # set parameters
         dtcs = st.text_input("dtcs", value="P0030, P0134")
-        vags = st.text_input("internal error codes (vags)")
+        internal_error_codes = st.text_input("internal error codes")
         vin = st.text_input("vin")
         manufacturer = st.text_input("manufacturer", value="volkswagen")
         model = st.text_input("model", value="golf gti")
@@ -164,27 +164,36 @@ async def main():
         submit_button = st.form_submit_button(label='Submit')
     
         if submit_button:
-            # dtcs and vags are coma separated lists
+            # dtcs and internal_error_codes are coma separated lists
             dtcs = [dtc.strip() for dtc in dtcs.split(",") if dtc]
-            vags = [vag.strip() for vag in vags.split(",") if vag]
+            internal_error_codes = [internal_error_code.strip() for internal_error_code in internal_error_codes.split(",") if internal_error_code]
 
             # check if all dtcs are valid
             pattern = re.compile(r'\b[PCBU0-9](?=[A-Z0-9]*\d)[A-Z0-9]{4}\b')
             no_errors = True
             dtcs_list = []
+            internal_error_codes_list = []
             for dtc in dtcs:
-                if pattern.match(dtc):
+                if pattern.match(dtc.replace(" ", "")):
                     dtcs_list.append(dtc)
                 else:
                     st.error(f"Invalid DTC code: {dtc}")
                     no_errors = False
                     break
+            #pattern = re.compile(r'\b[0-9](?=[A-Z0-9]*\d)[A-Z0-9]{4}\b')
+            for internal_error_code in internal_error_codes:
+                if pattern.match(internal_error_code.replace(" ", "")):
+                    internal_error_codes_list.append(internal_error_code)
+                else:
+                    st.error(f"Invalid internal error code: {internal_error_code}")
+                    no_errors = False
+                    break
 
-            if no_errors and dtcs_list:
+            if no_errors and (dtcs_list or internal_error_codes_list):
                 st.session_state["form_submitted"] = True
                 st.session_state["params"] = {
                     "dtcs": [str(dtc) for dtc in dtcs_list] if dtcs_list else None,
-                    "vags": [str(vag) for vag in vags] if vags else None,
+                    "vags": [str(internal_error_code) for internal_error_code in internal_error_codes_list] if internal_error_codes_list else None,
                     "vin": vin if vin else None,
                     "manufacturer": manufacturer if manufacturer else None,
                     "model": model if model else None,
@@ -204,7 +213,7 @@ async def main():
                 reset_chat(copy.deepcopy(st.session_state["params"]))
                 st.rerun()
             else:
-                st.error("Enter at least one DTC code in the correct format (e.g., P1234).")
+                st.error("Enter at least one DTC/internal error code in the correct format (e.g., DTCS: P0030, P0134; Internal error codes: 00001, 00002)")
 
     # chat interface
     if st.session_state["form_submitted"]:
