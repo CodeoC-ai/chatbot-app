@@ -193,7 +193,7 @@ async def main():
                 st.session_state["form_submitted"] = True
                 st.session_state["params"] = {
                     "dtcs": [str(dtc) for dtc in dtcs_list] if dtcs_list else None,
-                    "vags": [str(internal_error_code) for internal_error_code in internal_error_codes_list] if internal_error_codes_list else None,
+                    "internal_error_codes": [str(internal_error_code) for internal_error_code in internal_error_codes_list] if internal_error_codes_list else None,
                     "vin": vin if vin else None,
                     "manufacturer": manufacturer if manufacturer else None,
                     "model": model if model else None,
