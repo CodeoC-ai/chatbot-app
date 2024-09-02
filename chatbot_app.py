@@ -144,7 +144,7 @@ async def main():
     # sidebar form for input parameters
     with st.sidebar.form(key='input_form'):
         # license plate and vin parameters
-        regno = st.text_input("License plate", value="EYS061")
+        regno = st.text_input("License plate", value="NLA828")
         vin = st.text_input("VIN")
         country_code = st.text_input("Country code", value="SE")
 
