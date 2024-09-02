@@ -9,6 +9,8 @@ import requests
 import json
 import re
 
+import biluppgifter
+
 # language dictionary
 language_dict = {
     "en": {
@@ -38,7 +40,7 @@ if "forum_instructions" not in st.session_state:
 if "authenticated" not in st.session_state:
     st.session_state["authenticated"] = False
 if "params" not in st.session_state:
-    st.session_state["params"] = None
+    st.session_state["params"] = dict()
 if "fast_instructions" not in st.session_state:
     st.session_state["fast_instructions"] = None
 if "selected_language" not in st.session_state:
@@ -141,15 +143,21 @@ async def main():
     
     # sidebar form for input parameters
     with st.sidebar.form(key='input_form'):
-        # set parameters
+        # license plate and vin parameters
+        regno = st.text_input("License plate", value="EYS061")
+        vin = st.text_input("VIN")
+        country_code = st.text_input("Country code", value="SE")
+
+        st.markdown("---")
+
+        # other parameters
         dtcs = st.text_input("dtcs", value="P0030, P0134")
         internal_error_codes = st.text_input("internal error codes")
-        vin = st.text_input("vin")
-        manufacturer = st.text_input("manufacturer", value="volkswagen")
-        model = st.text_input("model", value="golf gti")
-        engine_id = st.text_input("engine id", value="BEV")
+        manufacturer = st.text_input("manufacturer", value=st.session_state["params"].get("manufacturer", "volkswagen"))
+        model = st.text_input("model", value=st.session_state["params"].get("model", "golf gti"))
+        engine_id = st.text_input("engine id", value=st.session_state["params"].get("engine_id", "BEV"))
         mileage = st.text_input("mileage")
-        year = st.text_input("year")
+        year = st.text_input("year", value=st.session_state["params"].get("year", ""))
 
         st.markdown("---")
 
@@ -195,6 +203,7 @@ async def main():
                     "dtcs": [str(dtc) for dtc in dtcs_list] if dtcs_list else None,
                     "internal_error_codes": [str(internal_error_code) for internal_error_code in internal_error_codes_list] if internal_error_codes_list else None,
                     "vin": vin if vin else None,
+                    "regno": regno if regno else None,
                     "manufacturer": manufacturer if manufacturer else None,
                     "model": model if model else None,
                     "engine_id": engine_id if engine_id else None,
@@ -207,11 +216,27 @@ async def main():
                         "B_prompt": B_prompt,
                         "B_temperature": B_temperature,
                         "C_prompt": C_prompt,
-                        "C_temperature": C_temperature
+                        "C_temperature": C_temperature,
+                        "country_code": country_code
                     }
                 }
-                reset_chat(copy.deepcopy(st.session_state["params"]))
-                st.rerun()
+                # get vehicle information if regno or vin is provided
+                if regno or vin:
+                    res = biluppgifter.get_car_info(regno=regno, vin=vin, country_code=country_code)
+                    if res["statusCode"] != 200:
+                        st.error(res["body"])
+                        st.session_state["form_submitted"] = False
+                        no_errors = False
+                    else:
+                        vehicle_info = json.loads(res["body"])
+                        # update manufacturer, model, engine_id, and year
+                        st.session_state["params"]["manufacturer"] = vehicle_info["data"]["basic"]["data"].get("make")
+                        st.session_state["params"]["model"] = vehicle_info["data"]["basic"]["data"].get("model")
+                        st.session_state["params"]["engine_id"] = vehicle_info["data"]["basic"]["data"].get("engine_id")
+                        st.session_state["params"]["year"] = vehicle_info["data"]["basic"]["data"].get("vehicle_year")
+                if no_errors:
+                    reset_chat(copy.deepcopy(st.session_state["params"]))
+                    st.rerun()
             else:
                 st.error("Enter at least one DTC/internal error code in the correct format (e.g., DTCS: P0030, P0134; Internal error codes: 00001, 00002)")
 
