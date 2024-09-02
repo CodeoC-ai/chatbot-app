@@ -1,2 +1,3 @@
 # ignore secrets
 .streamlit/secrets.toml
+__pycache__/
