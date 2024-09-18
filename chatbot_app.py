@@ -74,7 +74,13 @@ async def initialize_chat(params):
         # store the PDF and forum instructions in the session state
         st.session_state["pdf_instructions"] = body["pdf_instructions"]
         st.session_state["forum_instructions"] = body["forum_instructions"]
-        st.session_state["messages"].append({"role": "assistant", "content": final_instructions})
+        if body["internal_error_codes_map"] != {}:
+            for internal_code, obd_codes in body["internal_error_codes_map"].items():
+                if st.session_state["messages"][-1]["role"] != "assistant":
+                    st.session_state["messages"].append({"role": "assistant", "content": f"Hi! I mapped some of the internal codes to OBD codes. Here's the translation.\n\nI found the internal error code {internal_code} to match the following DTCs: {', '.join(obd_codes)}.\n"})
+                else:
+                    st.session_state["messages"][-1]["content"] += f"I found the internal error code {internal_code} to match the following DTCs: {', '.join(obd_codes)}.\n"
+        st.session_state["messages"][-1]["content"] += "\n" + final_instructions
     else:
         message = json.loads(response.text)
         st.session_state["messages"].append({"role": "assistant", "content": f"{message['error']}\n\nError code: {response.status_code}\n\nError on A - PDF instructions: {message['A']}\n\nError on B - Forum instructions: {message['B']}"})
